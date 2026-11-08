@@ -1,0 +1,178 @@
+# Glasmio
+
+**English** | [简体中文](README.zh-CN.md)
+
+A Jetpack Compose UI framework bringing a faithful 1:1 recreation of iOS 27 Liquid Glass, animations, controls, and interactions to Android.
+
+Glasmio is an independent third-party implementation built from research into iOS UI and interaction. It recreates glass rendering and optical refraction, motion and navigation transitions, gestures, and component behavior. Glasmio owns presentation and interaction; your application owns data, navigation, preferences, and font resources.
+
+## Research and recreation
+
+Glasmio combines iOS runtime analysis, UIKit and SwiftUI inspection, design references, and physical-device captures to reconstruct the visual and interactive behavior of iOS 27 on Android.
+
+- **Liquid Glass:** An Android rendering pipeline translates recovered material equations and measured recipes into backdrop sampling, blur, optical refraction, highlights, shadows, tint, and HDR-aware effects. Control lenses and liquid menu morphs have their own material behavior. See [native material rendering](docs/native-materials.md).
+- **Motion and interaction:** Navigation transitions, collapsing headers, gestures, menus, and sheets use motion and interaction models informed by native analysis and captures, including spring response and gesture release behavior. See the [navigation](docs/ios-navigation-motion.md), [sheet](docs/ios-sheet-motion.md), and [menu](docs/dropdown-motion.md) references.
+- **Components:** Controls, lists, typography, text selection, and other surfaces bring the researched geometry and behavior into Jetpack Compose. See the [design reference](docs/design-reference.md) and [component catalog](docs/components.md).
+
+Glasmio implements these effects and interactions independently for Android; it does not execute Apple's Metal binaries. Host applications can supply their own fonts and symbols.
+
+## Showcase
+
+| Component catalog | Materials · Light | Materials · Dark |
+| --- | --- | --- |
+| ![Glasmio component catalog](docs/images/showcase/home-light.webp) | ![Liquid Glass materials in light mode](docs/images/showcase/materials-light.webp) | ![Liquid Glass materials in dark mode](docs/images/showcase/materials-dark.webp) |
+
+| Controls | Lists | Sheet |
+| --- | --- | --- |
+| ![Switches and sliders](docs/images/showcase/controls.webp) | ![Grouped lists](docs/images/showcase/lists.webp) | ![Glasmio sheet](docs/images/showcase/sheet-open.webp) |
+
+| Home to Lists | Navigation drag | Navigation scroll · fast and slow |
+| --- | --- | --- |
+| ![Header transition between Home and Lists](docs/images/showcase/header-transition.gif) | ![Navigation selection drag and contact with Search](docs/images/showcase/navigation-drag.gif) | ![Navigation bar collapsing and expanding during fast and slow scrolls](docs/images/showcase/navigation-scroll.gif) |
+
+| Sheet gestures | Text selection toolbar | Liquid menu |
+| --- | --- | --- |
+| ![Sheet opening, expanding and dismissing](docs/images/showcase/sheet-motion.gif) | ![Text selection and expanded editing toolbar](docs/images/showcase/text-toolbar.gif) | ![Liquid menu opening and closing](docs/images/showcase/menu.gif) |
+
+All six libraries share version `0.1.2` and the Maven group `io.github.neoruaa.glasmio`.
+
+## Demo app
+
+[Download the Demo APK](https://github.com/NEORUAA/Glasmio/releases/latest/download/Glasmio-demo.apk)
+
+Requires Android 12 (API 31) or newer. API 33+ renders the full Liquid Glass material: AGSL refraction, optical highlights, and the native control lens. On API 31–32 the same components fall back to a Gaussian backdrop frost with the same tint and shape, so layouts and interactions are identical while refraction is omitted. The Demo includes SF Pro, SF Symbols, and real italic faces. Library artifacts contain no font files.
+
+## Modules
+
+| Artifact | Provides |
+| --- | --- |
+| `glasmio-core` | Light/dark themes, colors, typography, continuous shapes, spacing, motion |
+| `glasmio-glass` | Backdrop recording, blur, refraction, highlights, shadows, liquid menu morphs |
+| `glasmio-ui` | Buttons, switches, sliders, fields, lists, menus, alerts, sheets, toolbars, navigation |
+| `glasmio-scaffold` | Insets, collapsing titles, lazy pages, overscroll, refresh, sheet state |
+| `glasmio-preference` | Preference rows, switches, choices, and validated text editing |
+| `glasmio-icons` | Semantic symbol names, host-provided SF font rendering, replaceable icon resolver |
+| `sample` | Interactive component catalog with light/dark, RTL, and reduced-transparency modes |
+
+UI dependencies expose their underlying modules transitively. Add the highest-level modules you use.
+
+`glasmio-glass` owns backdrop recording and material rendering under `io.github.neoruaa.glasmio.glass.render`; no separate Kyant Backdrop dependency is required. Direct consumers must migrate imports to that namespace. Continuous-shape dependencies and existing third-party attributions remain in place.
+
+## Build and run
+
+Requires JDK 21, Android SDK 37, NDK `27.1.12297006`, and CMake `3.22.1`. The minimum supported Android version is API 31: backdrop effects need `RenderEffect` (API 31), and the AGSL material path additionally needs `RuntimeShader` (API 33). The repository includes its Gradle wrapper.
+
+```sh
+./gradlew :sample:assembleDebug testDebugUnitTest lintDebug
+adb install -r sample/build/outputs/apk/debug/sample-debug.apk
+```
+
+Run the component behavior tests on an Android device or emulator:
+
+```sh
+./gradlew :sample:connectedDebugAndroidTest
+```
+
+The sample demonstrates materials, controls, navigation, lists, preferences, text styles, search, menus, and sheets. Its Home, Materials, Settings, and About tabs share a navigation bar with a separate floating search control. Each page owns its collapsing title and progressive edge blur; only the top toolbar buttons are shared between destinations. Root tabs fade between destinations; detail pages use Glasmio's iOS-style transitions and swipe-back interaction. It builds independently of MeiloX.
+
+Settings contains persistent options that affect the Demo, including HDR Effects and FPS Counter, both off by default. The counter shows rendered-window FPS and the recent 1% Low without requesting extra animation frames. Preference component examples live in Controls under Preference Rows.
+
+Build the Demo with SF Pro and its real italic font:
+
+```sh
+./gradlew :sample:assembleDemo \
+  "-Pglasmio.symbolFont=/absolute/path/SF Pro.ttf" \
+  "-Pglasmio.italicFont=/absolute/path/SF-Pro-Italic.ttf"
+adb install -r sample/build/outputs/apk/demo/sample-demo.apk
+```
+
+Both font properties are required for Demo builds; packaging fails when either is missing. The Demo uses release optimizations and the debug signing key, with the same application ID as the sample.
+
+You can also set `glasmio.symbolFont` and `glasmio.italicFont` in the ignored root `local.properties`. Debug builds accept the same optional properties and retain system-font and icon fallbacks when omitted. The generated sample assets install one icon provider around the entire catalog. With the SF Pro variable font, the sample also selects text weight and optical size from that asset. These sample fonts are not included in library artifacts.
+
+## Use in an application
+
+Enable Google Maven and Maven Central in your application's settings:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories { google(); mavenCentral() }
+}
+```
+
+Then declare the modules you need:
+
+```kotlin
+dependencies {
+    implementation("io.github.neoruaa.glasmio:glasmio-scaffold:0.1.2")
+    implementation("io.github.neoruaa.glasmio:glasmio-preference:0.1.2")
+}
+```
+
+Install the theme and an explicit backdrop host. Keep the sampled background separate from glass controls:
+
+```kotlin
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import io.github.neoruaa.glasmio.core.*
+import io.github.neoruaa.glasmio.glass.*
+import io.github.neoruaa.glasmio.ui.*
+
+@Composable
+fun GreetingScreen() {
+    GlasmioTheme {
+        val colors = GlasmioTheme.colors
+        GlasmioBackdropHost(
+            modifier = Modifier.fillMaxSize(),
+            sampledContent = {
+                Box(Modifier.fillMaxSize().background(colors.groupedBackground))
+            },
+            overlayContent = {
+                var enabled by remember { mutableStateOf(true) }
+                Column(Modifier.safeDrawingPadding().padding(24.dp)) {
+                    Text("Hello, Glasmio", style = GlasmioTheme.typography.headlineLarge)
+                    Spacer(Modifier.height(24.dp))
+                    GlasmioSwitch(checked = enabled, onCheckedChange = { enabled = it })
+                }
+            },
+        )
+    }
+}
+```
+
+Every rounded theme surface uses `ContinuousRoundedRectangle`. Capsules retain their continuous outline. Customize `GlasmioShapes`, `GlassDimensions`, or the supplied typography without replacing the component system.
+
+## SF Symbols throughout the application
+
+Provide your licensed symbol font once at the application root. Every `SfIcon`, including icons inside Glasmio controls, then uses that source. Font files remain owned by the host application.
+
+```kotlin
+val context = LocalContext.current
+val symbolTypeface = remember(context.applicationContext) {
+    ResourcesCompat.getFont(context.applicationContext, R.font.sf_pro)
+}
+GlasmioIconProvider(symbolTypeface = symbolTypeface) {
+    GreetingScreen()
+}
+```
+
+The example uses `androidx.compose.ui.platform.LocalContext`, `androidx.core.content.res.ResourcesCompat`, and your application's `R`. Library artifacts contain no Apple font files. Without a supplied font, semantic Material icons provide a visible fallback. A custom `GlasmioIconResolver` can supply your own vectors.
+
+## Documentation
+
+- [Component catalog and examples](docs/components.md)
+- [Backdrop hosting and modal sampling](docs/backdrop.md)
+- [Native material rendering and automatic appearance](docs/native-materials.md)
+- [iOS glass loupe motion reference](docs/ios-loupe-motion.zh-CN.md) (Chinese)
+- [Migration from MeiloX](MIGRATION.md)
+- [Module and dependency boundaries](docs/migration-dependencies.md)
+- [Publishing](docs/releasing.md)
+- [Changelog](CHANGELOG.md)
+
+## License
+
+[Apache-2.0](LICENSE). Third-party dependencies and host-provided resources retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).

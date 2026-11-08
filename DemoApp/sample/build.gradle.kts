@@ -1,0 +1,152 @@
+import java.io.File
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import java.util.Properties
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+android {
+    namespace = "io.github.neoruaa.glasmio.sample"
+    compileSdk = 37
+    defaultConfig {
+        applicationId = "io.github.neoruaa.glasmio.sample"
+        minSdk = 31
+        targetSdk = 37
+        versionCode = 3
+        versionName = "0.1.2"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    buildFeatures { compose = true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            // The Demo ships to arm devices; x86/x86_64 copies of the native SDF
+            // library only cost ~1.9 MB. Emulator users build the debug variant.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        }
+        create("demo") {
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+dependencies {
+    implementation(project(":glasmio-scaffold"))
+    implementation(project(":glasmio-preference"))
+    implementation("androidx.activity:activity-compose:1.13.0")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+/** Host-owned fonts are generated into sample assets. */
+abstract class GenerateSymbolFontAssets : DefaultTask() {
+    @get:Input
+    abstract val requireFonts: Property<Boolean>
+
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sourceFont: RegularFileProperty
+
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sourceItalicFont: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        require(!requireFonts.get() || (sourceFont.isPresent && sourceItalicFont.isPresent)) {
+            "Demo builds require both glasmio.symbolFont and glasmio.italicFont."
+        }
+        val output = outputDirectory.get().asFile
+        output.deleteRecursively()
+        output.mkdirs()
+        fun copyFont(source: RegularFileProperty, property: String, assetName: String) = source.orNull?.asFile?.let { font ->
+            val signature = font.inputStream().use { it.readNBytes(4).toList() }
+            require(signature in listOf(
+                listOf<Byte>(0, 1, 0, 0),
+                "OTTO".toByteArray().toList(),
+                "ttcf".toByteArray().toList(),
+                "true".toByteArray().toList(),
+            )) { "$property must point to an OpenType or TrueType font." }
+            font.copyTo(output.resolve(assetName), overwrite = true)
+        }
+        copyFont(sourceFont, "glasmio.symbolFont", "glasmio_symbols.ttf")
+        copyFont(sourceItalicFont, "glasmio.italicFont", "glasmio_italic.ttf")
+    }
+}
+
+val localFontProperties = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+    .asText.orElse("").map { contents ->
+        Properties().apply { load(contents.reader()) }
+    }
+val symbolFontPath = providers.gradleProperty("glasmio.symbolFont")
+    .orElse(localFontProperties.map { it.getProperty("glasmio.symbolFont", "") }).map { it.trim() }.filter { it.isNotEmpty() }
+val italicFontPath = providers.gradleProperty("glasmio.italicFont")
+    .orElse(localFontProperties.map { it.getProperty("glasmio.italicFont", "") }).map { it.trim() }.filter { it.isNotEmpty() }
+val generateSymbolFontAssets = tasks.register<GenerateSymbolFontAssets>("generateSymbolFontAssets") {
+    requireFonts.set(false)
+    sourceFont.set(layout.file(symbolFontPath.map { File(it) }))
+    sourceItalicFont.set(layout.file(italicFontPath.map { File(it) }))
+    outputDirectory.set(layout.buildDirectory.dir("generated/symbol-font/debug/assets"))
+}
+val generateDemoSymbolFontAssets = tasks.register<GenerateSymbolFontAssets>("generateDemoSymbolFontAssets") {
+    requireFonts.set(true)
+    sourceFont.set(layout.file(symbolFontPath.map { File(it) }))
+    sourceItalicFont.set(layout.file(italicFontPath.map { File(it) }))
+    outputDirectory.set(layout.buildDirectory.dir("generated/symbol-font/demo/assets"))
+}
+val generateReleaseSymbolFontAssets = tasks.register<GenerateSymbolFontAssets>("generateReleaseSymbolFontAssets") {
+    requireFonts.set(providers.gradleProperty("glasmio.requireReleaseFonts").map(String::toBoolean).orElse(false))
+    sourceFont.set(layout.file(symbolFontPath.map { File(it) }))
+    sourceItalicFont.set(layout.file(italicFontPath.map { File(it) }))
+    outputDirectory.set(layout.buildDirectory.dir("generated/symbol-font/release/assets"))
+}
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateSymbolFontAssets,
+            GenerateSymbolFontAssets::outputDirectory,
+        )
+    }
+    onVariants(selector().withBuildType("demo")) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateDemoSymbolFontAssets,
+            GenerateSymbolFontAssets::outputDirectory,
+        )
+    }
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateReleaseSymbolFontAssets,
+            GenerateSymbolFontAssets::outputDirectory,
+        )
+    }
+}

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      AGSL backend: API 33 only by construction.
+
+      Every file below builds android.graphics.RuntimeShader / RenderEffect
+      programs. They are reached only through isRuntimeShaderSupported()
+      (@ChecksSdkIntAtLeast(TIRAMISU)) at these entry points:
+
+        GlassSurface            nativeRecipe, nativeOptics, press renderers
+        GlassMorphRenderer      shader, highlight, shadowLift
+        LiquidMenuMorphSurface  portal
+        IosToolbarActionGroup   LiquidMenuShaderPrograms prewarm
+
+      Lint's data flow cannot follow that capability gate through the shader
+      builders, the material recipe and the atlas pipeline, so the API level is
+      asserted once per file here instead of at every uniform write. Anything
+      outside these files still reports NewApi normally, and API 34/35 checks
+      inside them (ObsoleteSdkInt, InlinedApi, ...) stay enabled.
+    -->
+    <issue id="NewApi">
+        <ignore regexp="glasmio-glass[\\/]src[\\/]main[\\/]java[\\/]io[\\/]github[\\/]neoruaa[\\/]glasmio[\\/]glass[\\/](GlassMorphRenderer|LiquidMenuMorphSurface|NativeControlLens|NativeControlLensFieldPlane|NativeControlLensConsumerPool|NativeControlGlass|NativeGlassMipPyramid|NativeGlassCompletion|NavigationGlassFilter|NavigationMaterialRenderer|NavigationInnerShadows|NavigationNativeUnion|NavigationContactRefraction|NavigationContactField|NavigationDropShadow|NavigationShadowLift|NavigationGlassUnionShape|PressHighlightRenderer|SidebarGlassFilter)\.kt" />
+        <ignore regexp="glasmio-glass[\\/]src[\\/]main[\\/]java[\\/]io[\\/]github[\\/]neoruaa[\\/]glasmio[\\/]glass[\\/]render[\\/](RuntimeShaderCache|RuntimeShader)\.kt" />
+        <ignore regexp="glasmio-glass[\\/]src[\\/]main[\\/]java[\\/]io[\\/]github[\\/]neoruaa[\\/]glasmio[\\/]glass[\\/]render[\\/](effects[\\/]Lens|effects[\\/]RenderEffect|internal[\\/]RenderEffect|shadow[\\/]InnerShadowModifier|highlight[\\/]HighlightModifier|backdrops[\\/]SidebarBackgroundExtensionBackdrop)\.kt" />
+    </issue>
+</lint>
